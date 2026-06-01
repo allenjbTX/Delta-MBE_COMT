@@ -24,7 +24,14 @@ def esp_at_points(qm_coords, charge_coords, charges):
     dists = np.linalg.norm(diffs, axis=2)
     return (charges[None, :] / (dists * BOHR_PER_A)).sum(axis=1)
 
-def save_results_to_npz(frag, dftmm, dftbmm, esp, charge, multiplicity, filename):
+def save_results_to_npz(
+    frag, dftmm, dftbmm, esp, charge, multiplicity,
+    dft_mbe_e, dftb_mbe_e, dft_mbe_f, dftb_mbe_f,
+    qm_atom_indices, filename
+    ):
+    rows = [qm_atom_indices[a] for a in dftmm.qmatoms]
+    dft_mbe_f = dft_mbe_f[rows]
+    dftb_mbe_f = dftb_mbe_f[rows]
     np.savez(
         filename,
         charge = charge,
@@ -32,11 +39,15 @@ def save_results_to_npz(frag, dftmm, dftbmm, esp, charge, multiplicity, filename
         qm_coords = frag.coords[dftmm.qmatoms],
         qm_elems = np.array(frag.elems)[dftmm.qmatoms],
         delta_e = dftmm.QMenergy - dftbmm.QMenergy,
-        delta_f = -(dftmm.QM_PC_gradient[dftmm.qmatoms] 
+        delta_f = -(dftmm.QM_PC_gradient[dftmm.qmatoms]
                   - dftbmm.QM_PC_gradient[dftmm.qmatoms]),
         dft_e = dftmm.QMenergy,
         dft_f = -dftmm.QM_PC_gradient[dftmm.qmatoms],
-        esp = esp
+        esp = esp,
+        dft_mbe_e = dft_mbe_e,
+        delta_mbe_e = dft_mbe_e - dftb_mbe_e,
+        dft_mbe_f = dft_mbe_f,
+        delta_mbe_f = dft_mbe_f - dftb_mbe_f
     )
 
 def main():
@@ -60,6 +71,7 @@ def main():
     snapshot_number = pdbfile.split("/")[-1].split(".")[0]
     ash_fragment = ash.Fragment(pdbfile = pdbfile)
     qm_atoms = get_qm_atoms_from_pdb(qm_region_pdb)
+    qm_atom_indices = {idx: i for i, idx in enumerate(qm_atoms)}
 
     # MBE fragments and their charges read from JSON file
     frags_raw    = json.loads(open(frags_json, 'r').read())
@@ -69,10 +81,14 @@ def main():
     combos       = generate_combinations(num_frags, mbe_order)
 
     # dictionaries to store results
-    dft_energies  = {}
-    dft_forces    = {}
-    dftb_energies = {}
-    dftb_forces   = {}
+    dft_energies   = {}
+    dft_forces     = {}
+    dftb_energies  = {}
+    dftb_forces    = {}
+    esp            = {}
+    dftmm_objects  = {}
+    dftbmm_objects = {}
+    charges        = {}
 
     def _run_mbemm(combo):
         subsystem_atoms  = [idx for frag_idx in combo for idx in frags[frag_idx]]
@@ -153,7 +169,7 @@ def main():
             Grad = True
         )
 
-        esp = esp_at_points(
+        subsystem_esp = esp_at_points(
             ash_fragment.coords[dftmm.qmatoms], 
             dftmm.pointchargecoords, 
             dftmm.pointcharges
@@ -173,25 +189,19 @@ def main():
         dft_force[dft_rows] = dft_subsystem_force
         dftb_force[dftb_rows] = dftb_subsystem_force
 
-        return dft_energy, dft_force, dftb_energy, dftb_force, esp, dftmm, dftbmm, subsystem_charge
+        return dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, dftmm, dftbmm, subsystem_charge
 
     for combo in combos:
-        dft_energy, dft_force, dftb_energy, dftb_force, esp, dftmm, dftbmm, subsystem_charge = _run_mbemm(combo)
+        dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, dftmm, dftbmm, subsystem_charge = _run_mbemm(combo)
         dft_energies[combo] = dft_energy
         dft_forces[combo] = dft_force
         dftb_energies[combo] = dftb_energy
         dftb_forces[combo] = dftb_force
+        esp[combo] = subsystem_esp
+        dftmm_objects[combo] = dftmm
+        dftbmm_objects[combo] = dftbmm
+        charges[combo] = subsystem_charge
         combo_str = "(" + ",".join(str(i) for i in combo) + ")"
-        filename = f"{snapshot_number}_combo{combo_str}.npz"
-        save_results_to_npz(
-            frag = ash_fragment, 
-            dftmm = dftmm, 
-            dftbmm = dftbmm, 
-            esp = esp, 
-            charge = subsystem_charge, 
-            multiplicity = 1, 
-            filename = filename
-        )
         print(f"done {combo_str:>15s}: DFT {dft_energy: .8f} Ha, DFTB {dftb_energy: .8f} Ha")
 
     dft_mbe_energies = recursive_delta(dft_energies, mbe_order)
@@ -200,6 +210,24 @@ def main():
     dftb_mbe_forces = recursive_delta_vector(dftb_forces, mbe_order)
     mbe_total_dft_force = sum(dft_mbe_forces.values())
     mbe_total_dftb_force = sum(dftb_mbe_forces.values())
+
+    for combo in combos:
+        combo_str = "(" + ",".join(str(i) for i in combo) + ")"
+        filename = f"{snapshot_number}_combo{combo_str}.npz"
+        save_results_to_npz(
+            frag = ash_fragment, 
+            dftmm = dftmm_objects[combo],
+            dftbmm = dftbmm_objects[combo],
+            esp = esp[combo],
+            charge = charges[combo], 
+            multiplicity = 1, 
+            dft_mbe_e = dft_mbe_energies[combo],
+            dftb_mbe_e = dftb_mbe_energies[combo],
+            dft_mbe_f = dft_mbe_forces[combo],
+            dftb_mbe_f = dftb_mbe_forces[combo],
+            qm_atom_indices = qm_atom_indices,
+            filename = filename
+        )
 
     for order in range(1, mbe_order + 1):
         dft_energy_per_order = sum(dft_mbe_energies[c] for c in dft_mbe_energies if len(c) == order)

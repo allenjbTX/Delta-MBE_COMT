@@ -1,4 +1,6 @@
 from ash import *
+import openmm
+import openmm.app
 from mbe import *
 from dftb_helpers import *
 import numpy as np
@@ -94,12 +96,21 @@ def main():
         subsystem_atoms  = [idx for frag_idx in combo for idx in frags[frag_idx]]
         subsystem_charge = sum(frag_charges[frag_idx] for frag_idx in combo)
 
+        # Read the periodic box from the snapshot PDB's CRYST1 record
+        box = openmm.app.PDBFile(pdbfile).topology.getPeriodicBoxVectors()
+        periodic_cell_vectors = np.array(
+            [[v.value_in_unit(openmm.unit.angstrom) for v in vec] for vec in box]
+        )
+
         mm = OpenMMTheory(
             xmlsystemfile = xmlsystemfile, 
             pdbfile = pdbfile,
             periodic = True,
             autoconstraints = None,
-            rigidwater = False
+            rigidwater = False,
+            platform = "CPU",
+            periodic_nonbonded_cutoff = 12,
+            periodic_cell_vectors = periodic_cell_vectors
         )
 
         qm_dftb = DFTBTheory(
@@ -113,7 +124,8 @@ def main():
                 list(np.array(ash_fragment.elems)[subsystem_atoms])
             ),
             hcorrection_zeta = 4.00,
-            numcores = 8
+            fermi_temperature = 300,
+            numcores = 4
         )
 
         qm_pyscf = PySCFTheory(
@@ -184,10 +196,9 @@ def main():
         dft_force = np.zeros_like(ash_fragment.coords[qm_atoms])
         dftb_force = np.zeros_like(ash_fragment.coords[qm_atoms])
         qm_atom_indices = {idx: i for i, idx in enumerate(qm_atoms)}
-        dft_rows = [qm_atom_indices[a] for a in dftmm.qmatoms]
-        dftb_rows = [qm_atom_indices[a] for a in dftbmm.qmatoms]
-        dft_force[dft_rows] = dft_subsystem_force
-        dftb_force[dftb_rows] = dftb_subsystem_force
+        rows = [qm_atom_indices[a] for a in dftmm.qmatoms]
+        dft_force[rows] = dft_subsystem_force
+        dftb_force[rows] = dftb_subsystem_force
 
         return dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, dftmm, dftbmm, subsystem_charge
 

@@ -10,6 +10,8 @@ from MDAnalysis.analysis import distances
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+eldict_covrad['Mg'] = 0.0001 # so covalent bonds to Mg2+ are not detected
+
 def get_qm_atoms_from_pdb(pdbfile):
     qm_atoms = []
     with open(pdbfile, 'r') as f:

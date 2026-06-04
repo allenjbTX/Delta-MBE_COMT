@@ -1,4 +1,5 @@
 from ash import *
+from ash.modules.module_coords import eldict_covrad
 import openmm
 import openmm.app
 from mbe import *
@@ -6,6 +7,8 @@ from dftb_helpers import *
 import numpy as np
 import json
 import argparse
+
+eldict_covrad['Mg'] = 0.0001 # so covalent bonds to Mg2+ are not detected
 
 def get_qm_atoms_from_pdb(pdbfile):
     qm_atoms = []

@@ -7,6 +7,7 @@ from dftb_helpers import *
 import numpy as np
 import json
 import argparse
+import os
 
 eldict_covrad['Mg'] = 0.0001 # so covalent bonds to Mg2+ are not detected
 
@@ -20,17 +21,20 @@ def get_qm_atoms_from_pdb(pdbfile):
                 qm_atoms.append(idx)
     return qm_atoms
 
-def esp_at_points(qm_coords, charge_coords, charges):
-    """Electrostatic potential at target points from a set of point charges.
-    Inputs in Å and elementary charge. Output in atomic units (Hartree/e)."""
+def esp_and_efield(qm_coords, charge_coords, charges):
+    """ESP (Ha/e) and its -gradient = E field (Ha/e/Bohr) at each QM atom."""
     BOHR_PER_A = 1.8897259886
-    charges = np.asarray(charges)
-    diffs = qm_coords[:, None, :] - np.asarray(charge_coords)[None, :, :]
-    dists = np.linalg.norm(diffs, axis=2)
-    return (charges[None, :] / (dists * BOHR_PER_A)).sum(axis=1)
+    q = np.asarray(charges)
+    R = np.asarray(charge_coords) * BOHR_PER_A
+    r = np.asarray(qm_coords) * BOHR_PER_A
+    diff = r[:, None, :] - R[None, :, :]                # (Nqm, Nmm, 3)
+    dist = np.linalg.norm(diff, axis=2)                 # (Nqm, Nmm)
+    esp  = (q[None, :] / dist).sum(axis=1)              # (Nqm,)
+    efield = (q[None, :, None] * diff / dist[..., None]**3).sum(axis=1)  # (Nqm, 3)
+    return esp, efield
 
 def save_results_to_npz(
-    frag, dftmm, dftbmm, esp, charge, multiplicity,
+    frag, dftmm, dftbmm, esp, efield, charge, multiplicity,
     dft_mbe_e, dftb_mbe_e, dft_mbe_f, dftb_mbe_f,
     qm_atom_indices, filename
     ):
@@ -49,6 +53,7 @@ def save_results_to_npz(
         dft_e = dftmm.QMenergy,
         dft_f = -dftmm.QM_PC_gradient[dftmm.qmatoms],
         esp = esp,
+        efield = efield,
         dft_mbe_e = dft_mbe_e,
         delta_mbe_e = dft_mbe_e - dftb_mbe_e,
         dft_mbe_f = dft_mbe_f,
@@ -65,6 +70,10 @@ def main():
     p.add_argument("xml", help="Path to the OpenMM system XML file")
     p.add_argument("qm", help="Path to the QM region PDB file")
     p.add_argument("sk", help="Path to the directory containing DFTB Slater-Koster files")
+    p.add_argument("--outdir", default=".",
+                   help="Directory to write (and check for existing) npz files. "
+                        "If all combo files for the snapshot already exist here, "
+                        "the snapshot is skipped. Default: current directory.")
     args = p.parse_args()
     pdbfile = args.pdb
     frags_json = args.frags
@@ -72,6 +81,8 @@ def main():
     xmlsystemfile = args.xml
     qm_region_pdb = args.qm
     skdir = args.sk
+    outdir = args.outdir
+    os.makedirs(outdir, exist_ok=True)
 
     snapshot_number = pdbfile.split("/")[-1].split(".")[0]
     ash_fragment = ash.Fragment(pdbfile = pdbfile)
@@ -85,12 +96,25 @@ def main():
     num_frags    = len(frags)
     combos       = generate_combinations(num_frags, mbe_order)
 
+    # Skip the entire snapshot if all of its combo npz files already exist.
+    # (MBE recursive_delta needs every combo, so skipping must be all-or-nothing.)
+    def combo_filename(combo):
+        combo_str = "(" + ",".join(str(i) for i in combo) + ")"
+        return os.path.join(outdir, f"{snapshot_number}_combo{combo_str}.npz")
+
+    expected_files = [combo_filename(combo) for combo in combos]
+    if all(os.path.exists(f) for f in expected_files):
+        print(f"Skipping {snapshot_number}: all {len(expected_files)} combo "
+              f"npz files already present in {outdir}")
+        return
+
     # dictionaries to store results
     dft_energies   = {}
     dft_forces     = {}
     dftb_energies  = {}
     dftb_forces    = {}
     esp            = {}
+    efield         = {}
     dftmm_objects  = {}
     dftbmm_objects = {}
     charges        = {}
@@ -184,7 +208,7 @@ def main():
             Grad = True
         )
 
-        subsystem_esp = esp_at_points(
+        subsystem_esp, subsystem_efield = esp_and_efield(
             ash_fragment.coords[dftmm.qmatoms], 
             dftmm.pointchargecoords, 
             dftmm.pointcharges
@@ -203,15 +227,16 @@ def main():
         dft_force[rows] = dft_subsystem_force
         dftb_force[rows] = dftb_subsystem_force
 
-        return dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, dftmm, dftbmm, subsystem_charge
+        return dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, subsystem_efield, dftmm, dftbmm, subsystem_charge
 
     for combo in combos:
-        dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, dftmm, dftbmm, subsystem_charge = _run_mbemm(combo)
+        dft_energy, dft_force, dftb_energy, dftb_force, subsystem_esp, subsystem_efield, dftmm, dftbmm, subsystem_charge = _run_mbemm(combo)
         dft_energies[combo] = dft_energy
         dft_forces[combo] = dft_force
         dftb_energies[combo] = dftb_energy
         dftb_forces[combo] = dftb_force
         esp[combo] = subsystem_esp
+        efield[combo] = subsystem_efield
         dftmm_objects[combo] = dftmm
         dftbmm_objects[combo] = dftbmm
         charges[combo] = subsystem_charge
@@ -226,13 +251,13 @@ def main():
     mbe_total_dftb_force = sum(dftb_mbe_forces.values())
 
     for combo in combos:
-        combo_str = "(" + ",".join(str(i) for i in combo) + ")"
-        filename = f"{snapshot_number}_combo{combo_str}.npz"
+        filename = combo_filename(combo)
         save_results_to_npz(
             frag = ash_fragment, 
             dftmm = dftmm_objects[combo],
             dftbmm = dftbmm_objects[combo],
             esp = esp[combo],
+            efield = efield[combo],
             charge = charges[combo], 
             multiplicity = 1, 
             dft_mbe_e = dft_mbe_energies[combo],

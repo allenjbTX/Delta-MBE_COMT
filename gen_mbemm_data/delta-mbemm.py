@@ -84,7 +84,10 @@ def main():
     outdir = args.outdir
     os.makedirs(outdir, exist_ok=True)
 
-    snapshot_number = pdbfile.split("/")[-1].split(".")[0]
+    # Clean, unique label = the config index (e.g. config_0000). Walker/frame/CV metadata
+    # live in selected_configs_pdbfiles/manifest.csv, keyed by this same index.
+    stem = os.path.splitext(os.path.basename(pdbfile))[0]   # config_0000_w01_f030_cv+0.24
+    snapshot_number = "_".join(stem.split("_")[:2])         # config_0000
     ash_fragment = ash.Fragment(pdbfile = pdbfile)
     qm_atoms = get_qm_atoms_from_pdb(qm_region_pdb)
     qm_atom_indices = {idx: i for i, idx in enumerate(qm_atoms)}
@@ -151,7 +154,7 @@ def main():
                 list(np.array(ash_fragment.elems)[subsystem_atoms])
             ),
             hcorrection_zeta = 4.00,
-            fermi_temperature = 300,
+            electronic_temp = 300,
             numcores = 4
         )
 

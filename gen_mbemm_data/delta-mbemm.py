@@ -171,9 +171,6 @@ def main():
             scf_maxiter = 150,
             radii = None
         )
-        gcp_corr    = gcpTheory(functional = "r2SCAN-3c")
-        d4_corr     = DFTD4Theory(functional = "r2SCAN-3c")
-        qm_r2scan3c = WrapTheory(theories = [qm_pyscf, gcp_corr, d4_corr])
 
         dftbmm = QMMMTheory(
             fragment = ash_fragment, 
@@ -189,7 +186,7 @@ def main():
 
         dftmm = QMMMTheory(
             fragment = ash_fragment, 
-            qm_theory = qm_r2scan3c,
+            qm_theory = qm_pyscf,
             mm_theory = mm, 
             qmatoms = subsystem_atoms,
             embedding = "elstat", 

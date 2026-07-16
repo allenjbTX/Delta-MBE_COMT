@@ -5,10 +5,24 @@ Fits   delta_e_i ≈ sum_Z  n_{Z,i} * eps_Z
 via linear least squares, where n_{Z,i} is the count of element Z in structure i
 and eps_Z is its per-atom reference energy.
 
-NOTE: this is only identifiable when the dataset spans MORE THAN ONE composition.
-If every structure has the same stoichiometry, the design matrix is rank-deficient
-and the per-element split is arbitrary (only the total / per-atom mean is meaningful).
-The script reports the rank and warns in that case.
+By default the fit pools the delta_e of ALL expansion orders (1-, 2-, and 3-body
+combos) into a single least-squares problem. Every combo's delta_e is the raw
+subsystem energy (DFT - DFTB over that subsystem's real atoms), so it scales
+extensively with composition and is a valid row of the same linear model
+regardless of order. Pooling orders is strictly better-posed than any single
+order: the dimers and trimers span many more distinct stoichiometries, which
+lifts the rank deficiency that a single order (especially one-body, where each
+fragment appears once with fixed composition) usually suffers.
+
+NOTE: identifiability still requires the pooled data to span MORE THAN ONE
+composition. If the design matrix is rank-deficient the per-element split is
+arbitrary (only the per-atom mean is meaningful); the script reports the rank
+and warns in that case.
+
+Caveat: qm_elems counts only real atoms, while delta_e also contains the
+(H) link-atom caps at covalent QM/MM boundaries. That boundary offset is folded
+into the fitted references exactly as in the original one-body script -- pooling
+orders does not change this treatment.
 """
 import argparse
 import glob
@@ -36,19 +50,38 @@ def main():
     ap.add_argument("--energy-key", default="delta_e")
     ap.add_argument("--out", default="reference_energies.npz")
     ap.add_argument(
+        "--orders",
+        default="1,2,3",
+        help="comma-separated expansion orders to pool into the fit "
+        "(default: '1,2,3', i.e. all three orders)",
+    )
+    ap.add_argument(
         "--n-body",
         type=int,
-        default=1,
-        help="only use combo(...) files with this many monomers (default: 1, i.e. one-body)",
+        default=None,
+        help="deprecated single-order override; if given, use only this order "
+        "(equivalent to --orders <n>)",
     )
     args = ap.parse_args()
 
+    if args.n_body is not None:
+        orders = {args.n_body}
+    else:
+        orders = {int(tok) for tok in args.orders.split(",") if tok.strip()}
+    if not orders:
+        raise SystemExit("no expansion orders selected (see --orders)")
+
     files = sorted(glob.glob(os.path.join(args.npz_dir, "**", "*.npz"), recursive=True))
-    files = [f for f in files if n_body(f) == args.n_body]
+    files = [f for f in files if n_body(f) in orders]
     if not files:
         raise SystemExit(
-            f"no {args.n_body}-body combo(...) npz files found under {args.npz_dir}"
+            f"no combo(...) npz files of order(s) {sorted(orders)} found under {args.npz_dir}"
         )
+
+    per_order = {o: sum(1 for f in files if n_body(f) == o) for o in sorted(orders)}
+    print("orders pooled into fit: " + ", ".join(
+        f"{o}-body={per_order[o]}" for o in sorted(orders)
+    ))
 
     # First pass: collect the set of elements present.
     elements = set()

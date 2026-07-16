@@ -9,15 +9,7 @@ By default the fit pools the delta_e of ALL expansion orders (1-, 2-, and 3-body
 combos) into a single least-squares problem. Every combo's delta_e is the raw
 subsystem energy (DFT - DFTB over that subsystem's real atoms), so it scales
 extensively with composition and is a valid row of the same linear model
-regardless of order. Pooling orders is strictly better-posed than any single
-order: the dimers and trimers span many more distinct stoichiometries, which
-lifts the rank deficiency that a single order (especially one-body, where each
-fragment appears once with fixed composition) usually suffers.
-
-NOTE: identifiability still requires the pooled data to span MORE THAN ONE
-composition. If the design matrix is rank-deficient the per-element split is
-arbitrary (only the per-atom mean is meaningful); the script reports the rank
-and warns in that case.
+regardless of order. 
 
 Caveat: qm_elems counts only real atoms, while delta_e also contains the
 (H) link-atom caps at covalent QM/MM boundaries. That boundary offset is folded

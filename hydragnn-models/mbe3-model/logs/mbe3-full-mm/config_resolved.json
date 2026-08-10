@@ -1,0 +1,63 @@
+{
+  "data": {
+    "dataset_root": "../../gen_mbemm_data",
+    "split_dir": "../../gen_mbemm_data/splits_mbe3",
+    "num_workers": 0,
+    "pin_memory": true
+  },
+  "model": {
+    "hidden_dim": 128,
+    "num_conv_layers": 3,
+    "qm_cutoff": 5.0,
+    "qm_num_radial": 20,
+    "max_atomic_number": 100,
+    "mm_num_radial": 12,
+    "mm_local_cutoff": 8.0,
+    "mm_chunk_size": 2048,
+    "mm_softcore": 0.001,
+    "potential_scale": 0.1,
+    "field_scale": 0.01,
+    "radial_scale": 0.1,
+    "energy_residual_scale": 0.01,
+    "energy_bias_init": "train_mean"
+  },
+  "loss": {
+    "huber_delta": 2.0,
+    "weights": {
+      "energy": 1.0,
+      "qm_force": 1.0,
+      "mm_force": 1.0
+    },
+    "scales": {
+      "energy_hartree": 0.01,
+      "qm_force_hartree_per_angstrom": 0.01,
+      "mm_force_hartree_per_angstrom": 0.00015
+    }
+  },
+  "training": {
+    "seed": 7,
+    "use_gpu": true,
+    "precision": "float64",
+    "epochs": 3000,
+    "learning_rate": 0.0005,
+    "weight_decay": 1e-06,
+    "gradient_clip_norm": 10.0,
+    "scheduler_factor": 0.5,
+    "scheduler_patience": 15,
+    "minimum_learning_rate": 1e-06,
+    "early_stopping_patience": 50,
+    "minimum_improvement": 1e-06
+  },
+  "output": {
+    "output_dir": "logs",
+    "run_name": "mbe3-full-mm"
+  },
+  "resolved_dataset_root": "/lustre/orion/lrn070/scratch/allenjb/Delta-MBE_COMT/gen_mbemm_data",
+  "resolved_split_dir": "/lustre/orion/lrn070/scratch/allenjb/Delta-MBE_COMT/gen_mbemm_data/splits_mbe3",
+  "resolved_energy_bias_init_hartree": -3865.0830934484843,
+  "split_sizes": {
+    "train": 1307,
+    "val": 319,
+    "test": 270
+  }
+}

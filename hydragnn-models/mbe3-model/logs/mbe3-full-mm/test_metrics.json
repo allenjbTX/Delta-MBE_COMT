@@ -1,0 +1,16 @@
+{
+  "best_epoch": 775,
+  "best_validation_loss": 0.1818902221969341,
+  "test": {
+    "loss": 0.23308247460464776,
+    "energy_loss": 0.1486325676257172,
+    "qm_force_loss": 0.03960959937780885,
+    "mm_force_loss": 0.04484030760112171,
+    "energy_mae_kcal_mol": 2.6649835346520954,
+    "energy_rmse_kcal_mol": 3.42130880523155,
+    "qm_force_mae_kcal_mol_a": 1.2476326907902453,
+    "qm_force_rmse_kcal_mol_a": 1.7664862472280862,
+    "mm_force_mae_kcal_mol_a": 0.003964085518261177,
+    "mm_force_rmse_kcal_mol_a": 0.06542339063562744
+  }
+}

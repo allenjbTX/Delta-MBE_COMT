@@ -1,0 +1,127 @@
+{
+  "Verbosity": {
+    "level": 2
+  },
+  "Dataset": {
+    "name": "delta_mlip_activeqm_fullelstat_deref_mbe2",
+    "format": "npz",
+    "path": {
+      "total": "/lustre/orion/lrn070/scratch/allenjb/Delta-MBE_COMT/gen_mbemm_data/npz_files_mbe"
+    },
+    "splits_file": "/lustre/orion/lrn070/scratch/allenjb/Delta-MBE_COMT/gen_mbemm_data/splits_mbe/splits.json",
+    "frags_file": "/lustre/orion/lrn070/scratch/allenjb/Delta-MBE_COMT/gen_mbemm_data/frags.json",
+    "max_mbe_order": 2,
+    "esp_key": "esp",
+    "efield_key": "efield",
+    "efield_gradient_key": "efield_gradient",
+    "energy_key": "delta_e_deref",
+    "equivariant_electric_field": true,
+    "node_features": {
+      "name": [
+        "atomic_number",
+        "esp",
+        "efield"
+      ],
+      "dim": [
+        1,
+        1,
+        3
+      ],
+      "column_index": [
+        0,
+        1,
+        2
+      ]
+    },
+    "graph_features": {
+      "name": [],
+      "dim": [],
+      "column_index": []
+    }
+  },
+  "NeuralNetwork": {
+    "Architecture": {
+      "mpnn_type": "PAINN",
+      "radius": 5.0,
+      "max_neighbours": 100,
+      "num_radial": 16,
+      "hidden_dim": 128,
+      "num_conv_layers": 3,
+      "enable_interatomic_potential": true,
+      "energy_weight": 1.0,
+      "energy_peratom_weight": 0.0,
+      "force_weight": 100.0,
+      "graph_pooling": "add",
+      "monomer_output_bias": true,
+      "activation_function": "silu",
+      "output_heads": {
+        "node": {
+          "num_headlayers": 2,
+          "dim_headlayers": [
+            128,
+            64
+          ],
+          "type": "mlp"
+        }
+      },
+      "task_weights": [
+        1.0,
+        1.0
+      ]
+    },
+    "Variables_of_interest": {
+      "input_node_features": [
+        0,
+        1
+      ],
+      "output_names": [
+        "monomer_closure",
+        "dimer_closure"
+      ],
+      "output_index": [
+        0,
+        0
+      ],
+      "output_dim": [
+        1,
+        1
+      ],
+      "type": [
+        "node",
+        "node"
+      ]
+    },
+    "Training": {
+      "num_epoch": 3000,
+      "batch_size": 16,
+      "EarlyStopping": true,
+      "patience": 50,
+      "Checkpoint": true,
+      "loss_function_type": "mae",
+      "compute_grad_energy": true,
+      "total_energy_weight": 1.0,
+      "total_force_weight": 100.0,
+      "total_loss_warmup_epochs": 100,
+      "pairwise_energy_weight": 0.0,
+      "pairwise_huber_delta_kcal_mol": 2.0,
+      "pairwise_loss_warmup_epochs": 0,
+      "snapshots_per_batch": 1,
+      "closure_regularization_weight": 0.0,
+      "run_tag": "-activeqm-fullelstat-mbe2-deref",
+      "Optimizer": {
+        "type": "AdamW",
+        "learning_rate": 0.001,
+        "scheduler_factor": 0.8,
+        "scheduler_patience": 25,
+        "scheduler_min_lr": 0.00001
+      },
+      "conv_checkpointing": false,
+      "precision": "fp64"
+    }
+  },
+  "Visualization": {
+    "plot_init_solution": false,
+    "plot_hist_solution": false,
+    "create_plots": false
+  }
+}
